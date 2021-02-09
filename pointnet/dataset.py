@@ -59,8 +59,9 @@ class ShapeNetDataset(data.Dataset):
                  npoints=2500,
                  classification=False,
                  class_choice=None,
-                 split='train',
+                 split='train', #默认是训练模式
                  data_augmentation=True):
+        #初始化各种参数
         self.npoints = npoints
         self.root = root
         self.catfile = os.path.join(self.root, 'synsetoffset2category.txt')
@@ -69,17 +70,23 @@ class ShapeNetDataset(data.Dataset):
         self.classification = classification
         self.seg_classes = {}
         
+        #只读模式打开self.catfile指向的文件
         with open(self.catfile, 'r') as f:
             for line in f:
+                #把每一行文字，转为列表，strip()是删除换行符
                 ls = line.strip().split()
+                #ls[0]是模型名称，ls[1]是对应的数据文件夹名称
+                #'Airplane': 02691156
                 self.cat[ls[0]] = ls[1]
         #print(self.cat)
+        #筛选出指定的类
         if not class_choice is None:
             self.cat = {k: v for k, v in self.cat.items() if k in class_choice}
-
+        #02691156: Airplane
         self.id2cat = {v: k for k, v in self.cat.items()}
 
         self.meta = {}
+        #获取不同模式对应的文件列表
         splitfile = os.path.join(self.root, 'train_test_split', 'shuffled_{}_file_list.json'.format(split))
         #from IPython import embed; embed()
         filelist = json.load(open(splitfile, 'r'))
@@ -89,19 +96,25 @@ class ShapeNetDataset(data.Dataset):
         for file in filelist:
             _, category, uuid = file.split('/')
             if category in self.cat.values():
+                #Airplane:('路径/02691156/points/1a04e3eab45ca15dd86060f189eb133.pts',
+                #                     '路径/02691156/points_label/1a04e3eab45ca15dd86060f189eb133.seg')
+                #模型名称:('某角度的点云路径','对应的label路径')
                 self.meta[self.id2cat[category]].append((os.path.join(self.root, category, 'points', uuid+'.pts'),
                                         os.path.join(self.root, category, 'points_label', uuid+'.seg')))
 
         self.datapath = []
         for item in self.cat:
             for fn in self.meta[item]:
+                #('模型名称'，'某角度的点云路径','对应的label路径')
                 self.datapath.append((item, fn[0], fn[1]))
-
+        print(sorted(self.cat))
+        print(len(self.cat))
         self.classes = dict(zip(sorted(self.cat), range(len(self.cat))))
         print(self.classes)
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../misc/num_seg_classes.txt'), 'r') as f:
             for line in f:
                 ls = line.strip().split()
+                #'Airplane':4             模型:分割数量ground_truth
                 self.seg_classes[ls[0]] = int(ls[1])
         self.num_seg_classes = self.seg_classes[list(self.cat.keys())[0]]
         print(self.seg_classes, self.num_seg_classes)

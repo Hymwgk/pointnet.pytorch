@@ -12,12 +12,13 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
 
-
+#读取外部参数
 parser = argparse.ArgumentParser()
 parser.add_argument(
     '--batchSize', type=int, default=32, help='input batch size')
 parser.add_argument(
     '--workers', type=int, help='number of data loading workers', default=4)
+#设置训练多少轮
 parser.add_argument(
     '--nepoch', type=int, default=25, help='number of epochs to train for')
 parser.add_argument('--outf', type=str, default='seg', help='output folder')
@@ -38,11 +39,13 @@ dataset = ShapeNetDataset(
     root=opt.dataset,
     classification=False,
     class_choice=[opt.class_choice])
+
+#创建dataloader
 dataloader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=opt.batchSize,
-    shuffle=True,
-    num_workers=int(opt.workers))
+    dataset,#设置数据集对象
+    batch_size=opt.batchSize,#
+    shuffle=True,#设置将会随机打乱样本的顺序
+    num_workers=int(opt.workers))#设置使用几个线程去加载数据
 
 test_dataset = ShapeNetDataset(
     root=opt.dataset,
@@ -50,6 +53,7 @@ test_dataset = ShapeNetDataset(
     class_choice=[opt.class_choice],
     split='test',
     data_augmentation=False)
+
 testdataloader = torch.utils.data.DataLoader(
     test_dataset,
     batch_size=opt.batchSize,
