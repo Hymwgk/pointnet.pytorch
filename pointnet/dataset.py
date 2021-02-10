@@ -80,7 +80,8 @@ class ShapeNetDataset(data.Dataset):
                 self.cat[ls[0]] = ls[1]
         #print(self.cat)
         #筛选出指定的类
-        if not class_choice is None:
+        #print(class_choice)
+        if class_choice[0] is not None:
             self.cat = {k: v for k, v in self.cat.items() if k in class_choice}
         #02691156: Airplane
         self.id2cat = {v: k for k, v in self.cat.items()}
@@ -120,25 +121,42 @@ class ShapeNetDataset(data.Dataset):
         print(self.seg_classes, self.num_seg_classes)
 
     def __getitem__(self, index):
+        """根据给定的index，返回对应的样本数据+标签
+                1.从原始点云中随机抽取一定数量的点
+                2.将点云均值点作为新的坐标系原点，将抽样点云进行平移
+                3.找到最远点距离，利用其对重抽样点云坐标进行归一化
+        """
+        #直接按顺序读[('模型名称'，'某角度的点云路径','对应的label路径')...]
         fn = self.datapath[index]
+        #cls是什么意思？搞不明白，打印出来是排序后的序号，但是有什么作用呢？
         cls = self.classes[self.datapath[index][0]]
+        #读取点云数据，以np.float32形式
         point_set = np.loadtxt(fn[1]).astype(np.float32)
+        #分割的ground_truth,里面是对应点云数据中，每个点所属的类的标签
         seg = np.loadtxt(fn[2]).astype(np.int64)
         #print(point_set.shape, seg.shape)
 
         choice = np.random.choice(len(seg), self.npoints, replace=True)
-        #resample
+        #resample，行(点)按照choice抽取，列（三维坐标）的话，全都要
         point_set = point_set[choice, :]
-
+        #求出点集的均值中心，然后将所有点的坐标转换到以均值中心为原点
         point_set = point_set - np.expand_dims(np.mean(point_set, axis = 0), 0) # center
+        #找出点云中距离均值中心最远点的距离
         dist = np.max(np.sqrt(np.sum(point_set ** 2, axis = 1)),0)
+        #然后进行缩放，归一化
         point_set = point_set / dist #scale
 
+
+        #是否进行数据增强
         if self.data_augmentation:
+            #随机从0~pi/2中抽取一个角度
             theta = np.random.uniform(0,np.pi*2)
+            #print(theta)
+            #构造旋转矩阵
             rotation_matrix = np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta), np.cos(theta)]])
-            point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation
-            point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter
+            #绕着y轴旋转theta角度
+            point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation 对数据进行随机角度的旋转
+            point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter 对数据做随机抖动，添加随机噪声
 
         seg = seg[choice]
         point_set = torch.from_numpy(point_set)

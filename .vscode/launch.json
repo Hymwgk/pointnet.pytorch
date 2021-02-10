@@ -13,7 +13,7 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [ "--dataset" ,"/home/wgk/code/pointnet.pytorch/shapenetcore_partanno_segmentation_benchmark_v0",
-                "--nepoch","200"
+                "--nepoch","200","--workers","1"
             ]
         }
     ]
