@@ -60,23 +60,29 @@ testdataloader = torch.utils.data.DataLoader(
     shuffle=True,
     num_workers=int(opt.workers))
 
+
 print(len(dataset), len(test_dataset))
 num_classes = dataset.num_seg_classes
+#打印出指定的模型，对应的分割数量
 print('classes', num_classes)
 try:
+    #尝试创建一个存放分割结果的文件夹
     os.makedirs(opt.outf)
 except OSError:
     pass
 
 blue = lambda x: '\033[94m' + x + '\033[0m'
 
+#在这里，实例化PointNet分割网络
 classifier = PointNetDenseCls(k=num_classes, feature_transform=opt.feature_transform)
 
 if opt.model != '':
     classifier.load_state_dict(torch.load(opt.model))
 
+#使用Adam优化器，对分割网络中的参数进行优化，初始学习率是0.001，
 optimizer = optim.Adam(classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+
 classifier.cuda()
 
 num_batch = len(dataset) / opt.batchSize

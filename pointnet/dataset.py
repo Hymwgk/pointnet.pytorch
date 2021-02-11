@@ -61,6 +61,11 @@ class ShapeNetDataset(data.Dataset):
                  class_choice=None,
                  split='train', #默认是训练模式
                  data_augmentation=True):
+        """
+        读取数据集文件夹的样本及标签的路径，将文件夹路径进行“组织”，方便后来进行寻址，遍历
+        - 构造self.datapath (list)，存放指定的元组('模型名称'，'某角度的点云路径','对应的label路径')
+        - 构造self.seg_classes (dict)，存放所有的  {'模型':'分割数量ground_truth'} 键-值对儿
+        """
         #初始化各种参数
         self.npoints = npoints
         self.root = root
@@ -112,11 +117,14 @@ class ShapeNetDataset(data.Dataset):
         print(len(self.cat))
         self.classes = dict(zip(sorted(self.cat), range(len(self.cat))))
         print(self.classes)
+
+        #读取所有的模型名称，以及他们的分割数量
         with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../misc/num_seg_classes.txt'), 'r') as f:
             for line in f:
                 ls = line.strip().split()
                 #'Airplane':4             模型:分割数量ground_truth
                 self.seg_classes[ls[0]] = int(ls[1])
+        #获取指定的模型的分割数
         self.num_seg_classes = self.seg_classes[list(self.cat.keys())[0]]
         print(self.seg_classes, self.num_seg_classes)
 
@@ -125,6 +133,7 @@ class ShapeNetDataset(data.Dataset):
                 1.从原始点云中随机抽取一定数量的点
                 2.将点云均值点作为新的坐标系原点，将抽样点云进行平移
                 3.找到最远点距离，利用其对重抽样点云坐标进行归一化
+                4.将重采样点云和每个点的标签，从ndarray转化为tensor
         """
         #直接按顺序读[('模型名称'，'某角度的点云路径','对应的label路径')...]
         fn = self.datapath[index]
@@ -158,6 +167,7 @@ class ShapeNetDataset(data.Dataset):
             point_set[:,[0,2]] = point_set[:,[0,2]].dot(rotation_matrix) # random rotation 对数据进行随机角度的旋转
             point_set += np.random.normal(0, 0.02, size=point_set.shape) # random jitter 对数据做随机抖动，添加随机噪声
 
+        #索引，抽取出重采样的元素
         seg = seg[choice]
         point_set = torch.from_numpy(point_set)
         seg = torch.from_numpy(seg)
