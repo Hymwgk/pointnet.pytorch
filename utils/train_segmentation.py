@@ -83,18 +83,25 @@ if opt.model != '':
 optimizer = optim.Adam(classifier.parameters(), lr=0.001, betas=(0.9, 0.999))
 scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
 
+#将模型参数等等移至GPU中
 classifier.cuda()
-
+#计算有多少个batch
 num_batch = len(dataset) / opt.batchSize
 
 for epoch in range(opt.nepoch):
     scheduler.step()
     for i, data in enumerate(dataloader, 0):
+        #
         points, target = data
+        
+        #为什么要transpose？
         points = points.transpose(2, 1)
         points, target = points.cuda(), target.cuda()
+        #清空模型参数的梯度
         optimizer.zero_grad()
+        #将模型设置到训练模式
         classifier = classifier.train()
+        #将样本数据tensor送入网络
         pred, trans, trans_feat = classifier(points)
         pred = pred.view(-1, num_classes)
         target = target.view(-1, 1)[:, 0] - 1

@@ -134,6 +134,7 @@ class ShapeNetDataset(data.Dataset):
                 2.将点云均值点作为新的坐标系原点，将抽样点云进行平移
                 3.找到最远点距离，利用其对重抽样点云坐标进行归一化
                 4.将重采样点云和每个点的标签，从ndarray转化为tensor
+                5.将点云和标签成对返回
         """
         #直接按顺序读[('模型名称'，'某角度的点云路径','对应的label路径')...]
         fn = self.datapath[index]
@@ -172,8 +173,9 @@ class ShapeNetDataset(data.Dataset):
         point_set = torch.from_numpy(point_set)
         seg = torch.from_numpy(seg)
         cls = torch.from_numpy(np.array([cls]).astype(np.int64))
-
+        #print(point_set.shape)
         if self.classification:
+            #一个样本，是一个点集；不是单点，shape是(2500,3)
             return point_set, cls
         else:
             return point_set, seg

@@ -9,11 +9,17 @@ import torch.nn.functional as F
 
 
 class STN3d(nn.Module):
+    """这里是数据最开始的处理
+          用于预测一个三维旋转矩阵
+    """
     def __init__(self):
         super(STN3d, self).__init__()
+        #1d卷积层 训练阶段输出(batch size,64,2500)
         self.conv1 = torch.nn.Conv1d(3, 64, 1)
+        #训练阶段输出(batch size,128,2500)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)
+        #三个线性层
         self.fc1 = nn.Linear(1024, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, 9)
@@ -27,26 +33,46 @@ class STN3d(nn.Module):
 
 
     def forward(self, x):
+        #x.shape()=(32,3,2500)
         batchsize = x.size()[0]
+        #先经过三个1d卷积，输出Channel=64
         x = F.relu(self.bn1(self.conv1(x)))
+        #输出Channel=128
         x = F.relu(self.bn2(self.conv2(x)))
+        #输出Channel=1024的数据  (batch_size,1024,2500)
         x = F.relu(self.bn3(self.conv3(x)))
+        #print(x.size())
+        # size=(batch_size,1024,1)
         x = torch.max(x, 2, keepdim=True)[0]
+
+        #torch.Size([32, 1024])，每一行都是一个点云的压缩（Channel=1024拓展，维度压缩为1；相当于只留1个点，
+        # 该点包含了一帧点云2500个点的综合信息）
         x = x.view(-1, 1024)
 
+        #再利用3个全连接层，压缩点的Channel
         x = F.relu(self.bn4(self.fc1(x)))
         x = F.relu(self.bn5(self.fc2(x)))
+        #最终x的每一行，都是一帧点云的压缩过的FeatureMap，可以认为每帧点云
+        # 由一个维度为9的向量表示
         x = self.fc3(x)
 
+        #torch.Size([32, 9]) 这个是为了构建一个3*3单位矩阵
         iden = Variable(torch.from_numpy(np.array([1,0,0,0,1,0,0,0,1]).astype(np.float32))).view(1,9).repeat(batchsize,1)
+        
         if x.is_cuda:
             iden = iden.cuda()
+        #为什么要+iden ?
         x = x + iden
         x = x.view(-1, 3, 3)
+        #x是什么？作者想让它代表的是一个旋转矩阵
         return x
 
 
 class STNkd(nn.Module):
+    """
+    类似于预测旋转矩阵的小网络；预测一个64*64的矩阵，来对
+    其中一个FeatureMap做特征变换；目的是
+    """
     def __init__(self, k=64):
         super(STNkd, self).__init__()
         self.conv1 = torch.nn.Conv1d(k, 64, 1)
@@ -75,6 +101,7 @@ class STNkd(nn.Module):
 
         x = F.relu(self.bn4(self.fc1(x)))
         x = F.relu(self.bn5(self.fc2(x)))
+        #x.size()=(batch_size,4096)
         x = self.fc3(x)
 
         iden = Variable(torch.from_numpy(np.eye(self.k).flatten().astype(np.float32))).view(1,self.k*self.k).repeat(batchsize,1)
@@ -85,9 +112,14 @@ class STNkd(nn.Module):
         return x
 
 class PointNetfeat(nn.Module):
+    """
+    这个模块，主要是实现分割之外的所有功能
+    """
     def __init__(self, global_feat = True, feature_transform = False):
         super(PointNetfeat, self).__init__()
+        #构造一个旋转矩阵预测网络
         self.stn = STN3d()
+        #
         self.conv1 = torch.nn.Conv1d(3, 64, 1)
         self.conv2 = torch.nn.Conv1d(64, 128, 1)
         self.conv3 = torch.nn.Conv1d(128, 1024, 1)
@@ -100,11 +132,20 @@ class PointNetfeat(nn.Module):
             self.fstn = STNkd(k=64)
 
     def forward(self, x):
+        #一帧点云里的点数
         n_pts = x.size()[2]
+        #返回一个预测旋转矩阵
         trans = self.stn(x)
+        #将点云转置回到原始的形状;
+        # size=(batch_size,2500,3)
         x = x.transpose(2, 1)
+        #对batch内的每个点云都做旋转
         x = torch.bmm(x, trans)
+        #之后再转置回到(batch_size,3,2500)
         x = x.transpose(2, 1)
+
+        #进行1d卷积,将点云Channel拓展到64
+        #shape=(batch_size,64,2500)
         x = F.relu(self.bn1(self.conv1(x)))
 
         if self.feature_transform:
@@ -116,8 +157,15 @@ class PointNetfeat(nn.Module):
             trans_feat = None
 
         pointfeat = x
+        #再次拓展Channel
+        #shape=(batch_size,128,2500)
         x = F.relu(self.bn2(self.conv2(x)))
+        #再次拓展
+        #shape=(batch_size,1024,2500)
         x = self.bn3(self.conv3(x))
+        #x.size()=(batch_size,1024,1) 起到的作用实际上就是Maxpool，
+        #这个maxpool将2500*3的点云，压缩成为一个维度为1024的向量
+        #这个向量就代表的是全局的特征向量
         x = torch.max(x, 2, keepdim=True)[0]
         x = x.view(-1, 1024)
         if self.global_feat:
@@ -155,11 +203,13 @@ class PointNetDenseCls(nn.Module):
         super(PointNetDenseCls, self).__init__()
         self.k = k
         self.feature_transform=feature_transform
+        #导入一个子模块，将特征变换那里，单独写成一个小的网络
         self.feat = PointNetfeat(global_feat=False, feature_transform=feature_transform)
         self.conv1 = torch.nn.Conv1d(1088, 512, 1)
         self.conv2 = torch.nn.Conv1d(512, 256, 1)
         self.conv3 = torch.nn.Conv1d(256, 128, 1)
         self.conv4 = torch.nn.Conv1d(128, self.k, 1)
+        
         self.bn1 = nn.BatchNorm1d(512)
         self.bn2 = nn.BatchNorm1d(256)
         self.bn3 = nn.BatchNorm1d(128)
@@ -167,7 +217,9 @@ class PointNetDenseCls(nn.Module):
     def forward(self, x):
         batchsize = x.size()[0]
         n_pts = x.size()[2]
+        #x.shape=([32, 3, 2500])
         x, trans, trans_feat = self.feat(x)
+        #x.shape=([32, 1088, 2500])
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         x = F.relu(self.bn3(self.conv3(x)))
