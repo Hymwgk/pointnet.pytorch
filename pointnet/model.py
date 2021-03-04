@@ -164,14 +164,17 @@ class PointNetfeat(nn.Module):
         #shape=(batch_size,1024,2500)
         x = self.bn3(self.conv3(x))
         #x.size()=(batch_size,1024,1) 起到的作用实际上就是Maxpool，
-        #这个maxpool将2500*3的点云，压缩成为一个维度为1024的向量
+        #这个maxpool将2500*3的点云，压缩成为一个维度为1024的向量,在这里实现了顺序无关，maxpool
         #这个向量就代表的是全局的特征向量
         x = torch.max(x, 2, keepdim=True)[0]
+        #展开为(batch,1024) 的全局特征向量
         x = x.view(-1, 1024)
         if self.global_feat:
             return x, trans, trans_feat
         else:
+            #x.size()=(batch_size,1024,2500)
             x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
+            #每个点的Channel 都拼接局部＋全局特征；构成一个(batch_size,64+1024，2500)的点集合
             return torch.cat([x, pointfeat], 1), trans, trans_feat
 
 class PointNetCls(nn.Module):
@@ -217,15 +220,22 @@ class PointNetDenseCls(nn.Module):
     def forward(self, x):
         batchsize = x.size()[0]
         n_pts = x.size()[2]
-        #x.shape=([32, 3, 2500])
+        #输出x.size=([batch,64+1024=1088,2500])
         x, trans, trans_feat = self.feat(x)
-        #x.shape=([32, 1088, 2500])
+        #输出x.size=([batch_size,512, 2500])
         x = F.relu(self.bn1(self.conv1(x)))
+        #输出x.size=(batch_size,256,2500)
         x = F.relu(self.bn2(self.conv2(x)))
+        #继续压缩，x.size=(batch_size,128,2500)
         x = F.relu(self.bn3(self.conv3(x)))
+        #最后一次压缩，x.size=(batch_size,k类,2500)
         x = self.conv4(x)
+        #转置后x.size=(batch_size,2500,k)
         x = x.transpose(2,1).contiguous()
+        
+        #x.view(-1,self.k).size()=(batch_size*2500,4)
         x = F.log_softmax(x.view(-1,self.k), dim=-1)
+        #重新reshape成为原来的形状(batch_size,2500,k)
         x = x.view(batchsize, n_pts, self.k)
         return x, trans, trans_feat
 
