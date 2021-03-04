@@ -107,6 +107,7 @@ for epoch in range(opt.nepoch):
         target = target.view(-1, 1)[:, 0] - 1
         #print(pred.size(), target.size())
         loss = F.nll_loss(pred, target)
+        #添加惩罚项（正则化项）
         if opt.feature_transform:
             loss += feature_transform_regularizer(trans_feat) * 0.001
         loss.backward()

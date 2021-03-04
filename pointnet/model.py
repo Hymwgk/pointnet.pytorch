@@ -70,8 +70,8 @@ class STN3d(nn.Module):
 
 class STNkd(nn.Module):
     """
-    类似于预测旋转矩阵的小网络；预测一个64*64的矩阵，来对
-    其中一个FeatureMap做特征变换；目的是
+    预测一个64*64的矩阵，在特征空间中对
+    其中一个FeatureMap做特征变换；目的是将不同输入点云的特征进行对准align
     """
     def __init__(self, k=64):
         super(STNkd, self).__init__()
@@ -220,13 +220,13 @@ class PointNetDenseCls(nn.Module):
     def forward(self, x):
         batchsize = x.size()[0]
         n_pts = x.size()[2]
-        #输出x.size=([batch,64+1024=1088,2500])
+        #输出x.size=([batch,64+1024=1088,2500]) 压缩Channel
         x, trans, trans_feat = self.feat(x)
-        #输出x.size=([batch_size,512, 2500])
+        #输出x.size=([batch_size,512, 2500])  压缩Channel
         x = F.relu(self.bn1(self.conv1(x)))
-        #输出x.size=(batch_size,256,2500)
+        #输出x.size=(batch_size,256,2500)  压缩Channel
         x = F.relu(self.bn2(self.conv2(x)))
-        #继续压缩，x.size=(batch_size,128,2500)
+        #继续压缩Channel，x.size=(batch_size,128,2500) 
         x = F.relu(self.bn3(self.conv3(x)))
         #最后一次压缩，x.size=(batch_size,k类,2500)
         x = self.conv4(x)
