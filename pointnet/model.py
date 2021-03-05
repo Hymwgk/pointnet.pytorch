@@ -113,7 +113,11 @@ class STNkd(nn.Module):
 
 class PointNetfeat(nn.Module):
     """
-    这个模块，主要是实现分割之外的所有功能
+    这个是PointNet的主干处理网络，完成
+    -点云全局特征向量的提取
+    根据初始化global_feat参数可以继续完成两种子任务：
+    -组合局部与全局特征，并返回组合特征，以便于后续进行点云分割
+    -仅仅考虑全局特征，返回全局特征向量，以便于后续进行分类
     """
     def __init__(self, global_feat = True, feature_transform = False):
         super(PointNetfeat, self).__init__()
@@ -155,7 +159,7 @@ class PointNetfeat(nn.Module):
             x = x.transpose(2,1)
         else:
             trans_feat = None
-
+        #此时的pointfeat代表的是每个点的局部特征
         pointfeat = x
         #再次拓展Channel
         #shape=(batch_size,128,2500)
@@ -170,21 +174,29 @@ class PointNetfeat(nn.Module):
         #展开为(batch,1024) 的全局特征向量
         x = x.view(-1, 1024)
         if self.global_feat:
+            #不进行局部+全局组合（后续进行分类）
             return x, trans, trans_feat
         else:
+            #进行局部+全局特征组合（后续进行分割）
             #x.size()=(batch_size,1024,2500)
             x = x.view(-1, 1024, 1).repeat(1, 1, n_pts)
             #每个点的Channel 都拼接局部＋全局特征；构成一个(batch_size,64+1024，2500)的点集合
             return torch.cat([x, pointfeat], 1), trans, trans_feat
 
 class PointNetCls(nn.Module):
+    """
+    点云分类后续处理
+    """
     def __init__(self, k=2, feature_transform=False):
         super(PointNetCls, self).__init__()
         self.feature_transform = feature_transform
+        #嵌入主干处理网络
         self.feat = PointNetfeat(global_feat=True, feature_transform=feature_transform)
+        #三个1d卷积层，进行维度变换，转换到分类，k是设定的几个类别
         self.fc1 = nn.Linear(1024, 512)
         self.fc2 = nn.Linear(512, 256)
         self.fc3 = nn.Linear(256, k)
+        #选择
         self.dropout = nn.Dropout(p=0.3)
         self.bn1 = nn.BatchNorm1d(512)
         self.bn2 = nn.BatchNorm1d(256)
@@ -193,9 +205,11 @@ class PointNetCls(nn.Module):
     def forward(self, x):
         x, trans, trans_feat = self.feat(x)
         x = F.relu(self.bn1(self.fc1(x)))
+        #进行了一个dropout处理
         x = F.relu(self.bn2(self.dropout(self.fc2(x))))
         x = self.fc3(x)
         return F.log_softmax(x, dim=1), trans, trans_feat
+
 
 
 class PointNetDenseCls(nn.Module):
@@ -235,18 +249,26 @@ class PointNetDenseCls(nn.Module):
         
         #x.view(-1,self.k).size()=(batch_size*2500,4)
         x = F.log_softmax(x.view(-1,self.k), dim=-1)
-        #重新reshape成为原来的形状(batch_size,2500,k)
+        #重新reshape成为原来的形状(batch_size,2500,k类别)
+        #每一行都是该点在k个类别的概率
         x = x.view(batchsize, n_pts, self.k)
         return x, trans, trans_feat
 
 def feature_transform_regularizer(trans):
-    d = trans.size()[1]
+    """定义一个关于特征空间变换预测矩阵的规范项
+    输入trans：64维度变换矩阵
+    输出loss：scaler 衡量trans接近正交阵的程度
+    """
+    
+    d = trans.size()[1]#获取方阵trans的维度=64
     batchsize = trans.size()[0]
     I = torch.eye(d)[None, :, :]
+    #print(I.size())
     if trans.is_cuda:
         I = I.cuda()
     loss = torch.mean(torch.norm(torch.bmm(trans, trans.transpose(2,1)) - I, dim=(1,2)))
     return loss
+
 
 if __name__ == '__main__':
     sim_data = Variable(torch.rand(32,3,2500))

@@ -101,21 +101,30 @@ for epoch in range(opt.nepoch):
         optimizer.zero_grad()
         #将模型设置到训练模式
         classifier = classifier.train()
-        #将样本数据tensor送入网络
+        #将样本数据tensor送入网络；返回的：
+        #pred:   size()=(batchsize, n_pts, self.k) 每行都是一个点对应k个类别的概率
+        #trans: 预测出的3*3空间变换矩阵
+        #trans_feat:预测出的6*6空间变换矩阵
         pred, trans, trans_feat = classifier(points)
+        #size()=(batchsize*n_pts, self.k)=(80000,4)
         pred = pred.view(-1, num_classes)
+        #size()=(batchsize*n_pts)=(80000)每个值都是一个点的类别
         target = target.view(-1, 1)[:, 0] - 1
         #print(pred.size(), target.size())
         loss = F.nll_loss(pred, target)
-        #添加惩罚项（正则化项）
+        #为loss函数添加惩罚项（正则化项）
         if opt.feature_transform:
             loss += feature_transform_regularizer(trans_feat) * 0.001
+        #添加惩罚项之后才进行反向传播
         loss.backward()
+        #对权重进行更新，对学习率进行衰减
         optimizer.step()
+        #按行找每个点的最大概率值，找最大值对应的索引，这个索引就是输出的结果认为是
         pred_choice = pred.data.max(1)[1]
+        #
         correct = pred_choice.eq(target.data).cpu().sum()
         print('[%d: %d/%d] train loss: %f accuracy: %f' % (epoch, i, num_batch, loss.item(), correct.item()/float(opt.batchSize * 2500)))
-
+        #每隔10次迭代   验证一次
         if i % 10 == 0:
             j, data = next(enumerate(testdataloader, 0))
             points, target = data
@@ -126,11 +135,15 @@ for epoch in range(opt.nepoch):
             pred = pred.view(-1, num_classes)
             target = target.view(-1, 1)[:, 0] - 1
             loss = F.nll_loss(pred, target)
+            #求出每个点在k类别中的最大概率，并返回索引
             pred_choice = pred.data.max(1)[1]
+            #求出正确分割点的数量
             correct = pred_choice.eq(target.data).cpu().sum()
             print('[%d: %d/%d] %s loss: %f accuracy: %f' % (epoch, i, num_batch, blue('test'), loss.item(), correct.item()/float(opt.batchSize * 2500)))
 
     torch.save(classifier.state_dict(), '%s/seg_model_%s_%d.pth' % (opt.outf, opt.class_choice, epoch))
+
+
 
 ## benchmark mIOU
 shape_ious = []

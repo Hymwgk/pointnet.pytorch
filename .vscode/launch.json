@@ -12,8 +12,8 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": [ "--dataset" ,"/home/wgk/code/pointnet.pytorch/shapenetcore_partanno_segmentation_benchmark_v0",
-                "--nepoch","200","--workers","1"
+            "args": [ "--dataset" ,"/home/wgk/code/pointnet.pytorch/shapenetcore_partanno_segmentation_benchmark_v0","--feature_transform",
+                "--nepoch","200","--workers","1","--batchSize","8"
             ]
         }
     ]
